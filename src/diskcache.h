@@ -7,6 +7,14 @@
 #define REDIS_IOJOB_LOAD 0
 #define REDIS_IOJOB_SAVE 1
 
+/* IO operations scheduled */
+typedef struct ioop {
+    int type;
+    redisDb *db;
+    robj *key;
+    time_t ctime; /* This is the creation time of the entry. */
+} ioop;
+
 typedef struct iojob
 {
 	int type;      /* Request type, REDIS_IOJOB_* */

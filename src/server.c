@@ -2500,8 +2500,15 @@ void initServer(void) {
         server.db[j].avg_ttl = 0;
         server.db[j].defrag_later = listCreate();
         server.db[j].slots_to_keys = NULL; /* Set by clusterInit later on if necessary. */
+        if (server.ds_enabled) {
+            server.db[j].io_keys = dictCreate(&keylistDictType);
+            server.db[j].io_negcache = dictCreate(&setDictType);
+            server.db[j].io_queued = dictCreate(&setDictType);
+        }
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
     }
+    server.cache_io_queue = listCreate();
+    server.cache_flush_delay = 0;
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType);
     server.pubsub_patterns = dictCreate(&keylistDictType);

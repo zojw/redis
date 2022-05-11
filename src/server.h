@@ -554,6 +554,19 @@ typedef enum {
 #define PROPAGATE_AOF 1
 #define PROPAGATE_REPL 2
 
+#define REDIS_MAX_COMPLETED_JOBS_PROCESSED 1
+#define REDIS_THREAD_STACK_SIZE (1024*1024*4)
+
+/* Scheduled IO opeations flags. */
+#define REDIS_IO_LOAD 1
+#define REDIS_IO_SAVE 2
+#define REDIS_IO_LOADINPROG 4
+#define REDIS_IO_SAVEINPROG 8
+
+/* Generic IO flags */
+#define REDIS_IO_ONLYLOADS 1
+#define REDIS_IO_ASAP 2
+
 /* Client pause types, larger types are more restrictive
  * pause types than smaller pause types. */
 typedef enum {
@@ -921,6 +934,11 @@ typedef struct redisDb {
     unsigned long expires_cursor; /* Cursor of the active expire cycle. */
     list *defrag_later;         /* List of key names to attempt to defrag one by one, gradually. */
     clusterSlotToKeyMapping *slots_to_keys; /* Array of slots to keys. Only used in cluster mode (db 0). */
+
+    dict *io_keys;              /* Keys with clients waiting for DS I/O */
+    dict *io_negcache;          /* Negative caching for disk store */
+    dict *io_queued;            /* Queued IO operations hash table */
+
 } redisDb;
 
 /* forward declaration for functions ctx */
@@ -1826,10 +1844,12 @@ struct redisServer {
     int sort_alpha;
     int sort_bypattern;
     int sort_store;
-    /* Virtual memory configuration */
+    /*  Disk cache configuration */
     int ds_enabled; /* backend disk in redis.conf */
     char *ds_path;  /* location of the disk store on disk */
     unsigned long long cache_max_memory;
+    list *cache_io_queue;    /* IO operations queue */
+    int cache_flush_delay;   /* seconds to wait before flushing keys */
     /* Zip structure config, see redis.conf for more information  */
     size_t hash_max_listpack_entries;
     size_t hash_max_listpack_value;
@@ -1934,6 +1954,17 @@ struct redisServer {
                                                 is down, doesn't affect pubsub global. */
     long reply_buffer_peak_reset_time; /* The amount of time (in milliseconds) to wait between reply buffer peak resets */
     int reply_buffer_resizing_enabled; /* Is reply buffer resizing enabled (1 by default) */
+
+    list *io_newjobs; /* List of disk I/O jobs yet to be processed */
+    list *io_processing; /* List of disk I/O jobs being processed */
+    list *io_processed; /* List of disk I/O jobs already processed */
+    list *io_ready_clients; /* Clients ready to be unblocked. All keys loaded */
+    pthread_mutex_t io_mutex; /* lock to access io_jobs/io_done/io_thread_job */
+    pthread_cond_t io_condvar; /* I/O threads conditional variable */
+    pthread_attr_t io_threads_attr; /* attributes for threads creation */
+    int io_active_threads; /* Number of running I/O threads */
+    int io_ready_pipe_read;
+    int io_ready_pipe_write;
 };
 
 #define MAX_KEYS_BUFFER 256
